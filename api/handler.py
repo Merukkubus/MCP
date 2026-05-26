@@ -1,6 +1,7 @@
 from core.auth import AuthManager
 from core.code_validator import CodeValidator
 from core.config import ConfigManager
+from core.database import Database
 from core.executor import ExecutionService
 from core.logger import AuditLog
 from core.sandbox import SandboxService
@@ -16,7 +17,8 @@ class APIHandler:
         sandbox_service: SandboxService,
         executor: ExecutionService,
         logger: AuditLog,
-        code_validator: CodeValidator
+        code_validator: CodeValidator,
+        database: Database
     ):
         self.auth_manager = auth_manager
         self.config_manager = config_manager
@@ -24,25 +26,39 @@ class APIHandler:
         self.executor = executor
         self.logger = logger
         self.code_validator = code_validator
+        self.database = database
 
     def handle_execute(self, request: ExecutionRequest) -> ExecutionResult:
+        request_id = self.database.create_request(
+            client_id=request.client_id,
+            code=request.code,
+            status="received"
+        )
+
         self.logger.write("execute_request_received", request.client_id)
 
         if not self.auth_manager.verify(request.token):
-            self.logger.write("auth_failed", request.client_id, "unauthorized")
-            return ExecutionResult(
+            result = ExecutionResult(
                 status="unauthorized",
                 stderr="Invalid token"
             )
+            self.database.update_request_status(request_id, result.status)
+            self.database.save_result(request_id, result)
+            self.logger.write("auth_failed", request.client_id, "unauthorized")
+            return result
 
         is_valid, error_message = self.code_validator.validate(request.code)
+
         if not is_valid:
             status = "forbidden" if "Forbidden import" in error_message else "bad_request"
-            self.logger.write("code_validation_failed", request.client_id, status)
-            return ExecutionResult(
+            result = ExecutionResult(
                 status=status,
                 stderr=error_message
             )
+            self.database.update_request_status(request_id, result.status)
+            self.database.save_result(request_id, result)
+            self.logger.write("code_validation_failed", request.client_id, status)
+            return result
 
         workspace = self.sandbox_service.prepare_workspace(request.client_id)
 
@@ -53,6 +69,9 @@ class APIHandler:
                 timeout=self.config_manager.get_timeout(),
                 output_limit=self.config_manager.get_output_limit()
             )
+
+            self.database.update_request_status(request_id, result.status)
+            self.database.save_result(request_id, result)
 
             self.logger.write("execute_finished", request.client_id, result.status)
             return result
