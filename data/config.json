@@ -1,0 +1,9 @@
+{
+  "tokens": ["123"],
+  "admin_tokens": ["admin123"],
+  "timeout": 3,
+  "output_limit": 4000,
+  "max_code_size": 10000,
+  "sandbox_root": "sandbox",
+  "forbidden_imports": ["os", "subprocess", "socket", "shutil", "pathlib"]
+}
