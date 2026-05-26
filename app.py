@@ -4,6 +4,7 @@ from api.handler import APIHandler
 from core.auth import AuthManager
 from core.code_validator import CodeValidator
 from core.config import ConfigManager
+from core.database import Database
 from core.executor import ExecutionService
 from core.logger import AuditLog
 from core.sandbox import SandboxService
@@ -11,8 +12,9 @@ from models.request import ExecutionRequest
 
 app = Flask(__name__)
 
+database = Database("data/server.db")
 config = ConfigManager("data/config.json")
-logger = AuditLog("data/logs.jsonl")
+logger = AuditLog("data/logs.jsonl", database)
 
 api_handler = APIHandler(
     auth_manager=AuthManager(config),
@@ -20,7 +22,8 @@ api_handler = APIHandler(
     sandbox_service=SandboxService(config),
     executor=ExecutionService(),
     logger=logger,
-    code_validator=CodeValidator(config)
+    code_validator=CodeValidator(config),
+    database=database
 )
 
 
@@ -29,10 +32,12 @@ def index():
     return jsonify({
         "message": "MCP server is running",
         "endpoints": [
-            "GET /health",
-            "POST /execute",
-            "GET /admin/logs",
-            "GET /admin/config"
+            "/health",
+            "/tools",
+            "/execute",
+            "/admin/logs",
+            "/admin/config",
+            "/admin/requests"
         ]
     })
 
@@ -148,6 +153,21 @@ def tools():
                 "description": "View or update configuration"
             }
         ]
+    })
+
+@app.route("/admin/requests", methods=["GET"])
+def get_requests():
+    token = request.headers.get("X-Admin-Token", "")
+
+    if not api_handler.auth_manager.verify_admin(token):
+        return jsonify({
+            "status": "unauthorized",
+            "error": "Invalid admin token"
+        }), 401
+
+    return jsonify({
+        "status": "ok",
+        "requests": database.get_requests(limit=50)
     })
 
 if __name__ == "__main__":
