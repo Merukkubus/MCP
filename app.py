@@ -81,8 +81,8 @@ def get_logs():
     return jsonify(result), status_code
 
 
-@app.route("/admin/config", methods=["GET"])
-def get_config():
+@app.route("/admin/config", methods=["GET", "PUT"])
+def config_endpoint():
     token = request.headers.get("X-Admin-Token", "")
 
     if not api_handler.auth_manager.verify_admin(token):
@@ -91,11 +91,64 @@ def get_config():
             "error": "Invalid admin token"
         }), 401
 
+    if request.method == "GET":
+        return jsonify({
+            "status": "ok",
+            "config": api_handler.config_manager.load()
+        })
+
+    data = request.get_json(silent=True)
+
+    if data is None:
+        return jsonify({
+            "status": "bad_request",
+            "error": "Invalid JSON"
+        }), 400
+
+    updated_config = api_handler.config_manager.update(data)
+
+    logger.write(
+        event="config_updated",
+        client_id="admin",
+        status="ok"
+    )
+
     return jsonify({
         "status": "ok",
-        "config": api_handler.config_manager.load()
+        "config": updated_config
     })
 
+@app.route("/tools", methods=["GET"])
+def tools():
+    return jsonify({
+        "status": "ok",
+        "tools": [
+            {
+                "name": "execute",
+                "method": "POST",
+                "endpoint": "/execute",
+                "description": "Execute Python code"
+            },
+            {
+                "name": "health",
+                "method": "GET",
+                "endpoint": "/health",
+                "description": "Check server status"
+            },
+            {
+                "name": "logs",
+                "method": "GET",
+                "endpoint": "/admin/logs",
+                "description": "Get audit logs"
+            },
+            {
+                "name": "config",
+                "method": "GET/PUT",
+                "endpoint": "/admin/config",
+                "description": "View or update configuration"
+            }
+        ]
+    })
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
