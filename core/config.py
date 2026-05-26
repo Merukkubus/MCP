@@ -9,6 +9,26 @@ class ConfigManager:
         with open(self.path, "r", encoding="utf-8") as file:
             return json.load(file)
 
+    def save(self, config: dict) -> None:
+        with open(self.path, "w", encoding="utf-8") as file:
+            json.dump(config, file, indent=2)
+
+    def update(self, updates: dict) -> dict:
+        config = self.load()
+
+        allowed_fields = {
+            "timeout",
+            "output_limit",
+            "max_code_size"
+        }
+
+        for key, value in updates.items():
+            if key in allowed_fields:
+                config[key] = value
+
+        self.save(config)
+        return config
+
     def get_tokens(self) -> list[str]:
         return self.load().get("tokens", [])
 
